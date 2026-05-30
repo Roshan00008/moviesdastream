@@ -1,6 +1,6 @@
 import express from 'express';
 import pkg from 'stremio-addon-sdk';
-const { addonBuilder } = pkg;
+const { addonBuilder, getRouter } = pkg;
 import { resolveMultiResults, resolveMovieByTmdbId } from '../search.js';
 import { scrapeMovieStreams } from '../extractor.js';
 import { fetchJson } from '../http.js';
@@ -193,7 +193,7 @@ builder.defineStreamHandler(async (args) => {
 // Expose Express application mounting the Stremio Addon router
 const app = express();
 const addonInterface = builder.getInterface();
-const router = addonInterface.getRouter();
+const router = getRouter(addonInterface);
 
 // Path normalizer: strips "/api/addon" prefix so that Stremio SDK router can match the endpoints perfectly
 app.use((req, res, next) => {
