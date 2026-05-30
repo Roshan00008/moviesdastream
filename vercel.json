@@ -1,39 +1,33 @@
 {
   "version": 2,
-  "builds": [
+  "rewrites": [
     {
-      "src": "api/**/*.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/webhook",
-      "dest": "/api/webhook.js"
+      "source": "/api/webhook",
+      "destination": "/api/webhook.js"
     },
     {
-      "src": "/api/setup",
-      "dest": "/api/setup.js"
+      "source": "/api/setup",
+      "destination": "/api/setup.js"
     },
     {
-      "src": "/api/addon/(.*)",
-      "dest": "/api/addon.js"
+      "source": "/api/addon",
+      "destination": "/api/addon.js"
     },
     {
-      "src": "/api/addon",
-      "dest": "/api/addon.js"
+      "source": "/api/addon/:path*",
+      "destination": "/api/addon.js"
     },
     {
-      "src": "/manifest.json",
-      "dest": "/api/addon.js"
+      "source": "/manifest.json",
+      "destination": "/api/addon.js"
     },
     {
-      "src": "/catalog/(.*)",
-      "dest": "/api/addon.js"
+      "source": "/catalog/:path*",
+      "destination": "/api/addon.js"
     },
     {
-      "src": "/stream/(.*)",
-      "dest": "/api/addon.js"
+      "source": "/stream/:path*",
+      "destination": "/api/addon.js"
     }
   ]
 }
