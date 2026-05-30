@@ -354,7 +354,8 @@ export async function resolveMultiResults(queryText) {
             title: result.title || result.original_title,
             year: result.release_date ? result.release_date.split('-')[0] : "Unknown",
             rating: result.vote_average ? `${result.vote_average.toFixed(1)}/10` : "N/A",
-            overview: result.overview || ""
+            overview: result.overview || "",
+            poster: result.poster_path ? `https://image.tmdb.org/t/p/w500${result.poster_path}` : null
         }));
     } catch (e) {
         console.error(`[Search] Failed to fetch multi-results: ${e.message}`);
