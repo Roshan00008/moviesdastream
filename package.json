@@ -1,0 +1,24 @@
+{
+  "name": "moviesda-telegram-bot",
+  "version": "1.0.0",
+  "description": "Standalone Telegram Bot to search and scrape Tamil movies from Moviesda30",
+  "main": "bot.js",
+  "type": "module",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.12",
+    "dotenv": "^16.4.5",
+    "node-telegram-bot-api": "^0.66.0"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "moviesda",
+    "scraper",
+    "downloader"
+  ],
+  "author": "Nishok",
+  "license": "MIT"
+}
