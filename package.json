@@ -5,12 +5,14 @@
   "main": "bot.js",
   "type": "module",
   "scripts": {
-    "start": "node bot.js"
+    "start": "node bot.js",
+    "addon": "node addon.js"
   },
   "dependencies": {
     "cheerio": "^1.0.0-rc.12",
     "dotenv": "^16.4.5",
-    "node-telegram-bot-api": "^0.66.0"
+    "node-telegram-bot-api": "^0.66.0",
+    "stremio-addon-sdk": "^1.6.10"
   },
   "keywords": [
     "telegram",
