@@ -22,6 +22,18 @@
     {
       "src": "/api/addon",
       "dest": "/api/addon.js"
+    },
+    {
+      "src": "/manifest.json",
+      "dest": "/api/addon.js"
+    },
+    {
+      "src": "/catalog/(.*)",
+      "dest": "/api/addon.js"
+    },
+    {
+      "src": "/stream/(.*)",
+      "dest": "/api/addon.js"
     }
   ]
 }
