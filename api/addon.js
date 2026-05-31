@@ -215,22 +215,21 @@ builder.defineStreamHandler(async (args) => {
 
         // Step 9: Map Tamilyogi streams to Stremio format (Clearly labeled: [Tamilyogi])
         const tyStremio = tyStreams.map(stream => {
-            const isEmbed = stream.type === 'embed';
             return {
                 url: stream.externalUrl || stream.url,
                 name: `[Tamilyogi]\n${stream.name.replace('Tamilyogi\n', '')}`,
                 title: `🎥 [Tamilyogi] · ${stream.title.replace('🔗 Tamilyogi', '').trim()}`,
                 behaviorHints: {
-                    notWebReady: isEmbed,
+                    // Set to true for all Tamilyogi streams (OKRU resolved & embeds) to prevent Stremio Web Player
+                    // container_unsupported 23003 format errors, forcing fallback to external player smoothly
+                    notWebReady: true,
                     ...(stream.headers ? { headers: stream.headers } : {})
                 }
             };
         });
 
-        // Step 10: Aggregate — direct streams first (Moviesda + Tamilyogi OKRU), then embeds/downloads
-        const directTy = tyStremio.filter(s => !s.behaviorHints.notWebReady);
-        const embedTy = tyStremio.filter(s => s.behaviorHints.notWebReady);
-        const allStremio = [...mdStremio, ...directTy, ...embedTy, ...tbStremio];
+        // Step 10: Aggregate — direct streams first (Moviesda), then Tamilyogi, then Tamilblasters
+        const allStremio = [...mdStremio, ...tyStremio, ...tbStremio];
 
         console.log(`[Addon Vercel] Returning ${allStremio.length} total streams (MD:${mdStremio.length} + TB:${tbStremio.length} + TY:${tyStremio.length}) to Stremio`);
         return { streams: allStremio };
