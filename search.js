@@ -439,3 +439,146 @@ export async function scrapeLatestUpdates() {
         return [];
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAMILBLASTERS SUPPORT
+// ─────────────────────────────────────────────────────────────────────────────
+
+// In-memory cache so we only discover the domain once per process lifetime
+let _tbDomainCache = null;
+
+const TB_DOMAIN_PATTERN = /https?:\/\/(?:www\.)?1tamilblasters\.[a-z.]+/i;
+const TB_FALLBACK_DOMAIN = "https://www.1tamilblasters.luxe";
+
+/**
+ * Auto-discovers the current live Tamilblasters domain via search engines.
+ * Falls back to the last known domain if discovery fails.
+ */
+export async function getTamilblastersDomain() {
+    if (_tbDomainCache) return _tbDomainCache;
+
+    const queries = [
+        `https://html.duckduckgo.com/html/?q=1tamilblasters+tamil+movies`,
+        `https://www.google.com/search?q=1tamilblasters+tamil+movies&num=5`
+    ];
+
+    for (const searchUrl of queries) {
+        try {
+            const html = await fetchText(searchUrl);
+            const $ = cheerio.load(html);
+
+            let found = null;
+            $('a').each((_, el) => {
+                if (found) return;
+                let href = $(el).attr('href') || '';
+                // DuckDuckGo redirect
+                const uddg = href.match(/uddg=(.*?)(?:&|$)/);
+                if (uddg) href = decodeURIComponent(uddg[1]);
+                // Google redirect
+                const gm = href.match(/\/url\?q=(.*?)(?:&|$)/);
+                if (gm) href = decodeURIComponent(gm[1]);
+
+                const m = href.match(TB_DOMAIN_PATTERN);
+                if (m) found = m[0].replace(/\/$/, '');
+            });
+
+            if (found) {
+                console.log(`[Search] Tamilblasters domain discovered: ${found}`);
+                _tbDomainCache = found;
+                return found;
+            }
+        } catch (e) {
+            console.warn(`[Search] TB domain discovery failed for ${searchUrl}: ${e.message}`);
+        }
+    }
+
+    console.warn(`[Search] TB domain discovery failed — using fallback: ${TB_FALLBACK_DOMAIN}`);
+    _tbDomainCache = TB_FALLBACK_DOMAIN;
+    return TB_FALLBACK_DOMAIN;
+}
+
+/**
+ * Searches Tamilblasters for a movie by title + year and returns the post page URL.
+ */
+export async function findTamilblastersUrl(title, year) {
+    try {
+        const domain = await getTamilblastersDomain();
+        const query = year ? `${title} ${year}` : title;
+        const searchUrl = `${domain}/?s=${encodeURIComponent(query)}`;
+        console.log(`[Search] Tamilblasters search: ${searchUrl}`);
+
+        const html = await fetchText(searchUrl);
+        const $ = cheerio.load(html);
+        const cleanSearch = cleanTitle(title);
+
+        let bestMatch = null;
+
+        $('a').each((_, el) => {
+            if (bestMatch) return;
+            const href = $(el).attr('href') || '';
+            const text = $(el).text().trim();
+
+            // Must be a link within the same domain (a post page)
+            if (!href.startsWith(domain) || href === domain || href === `${domain}/`) return;
+            if (href.includes('/category/') || href.includes('/tag/') || href.includes('/page/') || href.includes('wp-')) return;
+            if (text.length < 5) return;
+
+            const cleanText = cleanTitle(text.split('(')[0]);
+            if (cleanText.includes(cleanSearch) || cleanSearch.includes(cleanText)) {
+                // If year provided, prefer the result that contains the year
+                if (year && !href.includes(year) && !text.includes(year)) return;
+                bestMatch = href;
+            }
+        });
+
+        if (bestMatch) console.log(`[Search] Tamilblasters match: ${bestMatch}`);
+        return bestMatch;
+    } catch (e) {
+        console.error(`[Search] Tamilblasters search error: ${e.message}`);
+        return null;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAMILYOGI SUPPORT
+// ─────────────────────────────────────────────────────────────────────────────
+
+const TAMILYOGI_BASE = "https://tamilyogi.nz";
+
+/**
+ * Searches Tamilyogi for a movie by title + year and returns the post page URL.
+ */
+export async function findTamilyogiUrl(title, year) {
+    try {
+        const query = year ? `${title} ${year}` : title;
+        const searchUrl = `${TAMILYOGI_BASE}/?s=${encodeURIComponent(query)}`;
+        console.log(`[Search] Tamilyogi search: ${searchUrl}`);
+
+        const html = await fetchText(searchUrl);
+        const $ = cheerio.load(html);
+        const cleanSearch = cleanTitle(title);
+
+        let bestMatch = null;
+
+        $('a').each((_, el) => {
+            if (bestMatch) return;
+            const href = $(el).attr('href') || '';
+            const text = $(el).text().trim();
+
+            if (!href.startsWith(TAMILYOGI_BASE) || href === TAMILYOGI_BASE || href === `${TAMILYOGI_BASE}/`) return;
+            if (href.includes('/category/') || href.includes('/tag/') || href.includes('/page/') || href.includes('wp-')) return;
+            if (text.length < 5) return;
+
+            const cleanText = cleanTitle(text.split('(')[0].replace(/\d{4}\s*(tamil|hindi|telugu|kannada|malayalam|movie|hd|cam|dvd|web)/gi, '').trim());
+            if (cleanText.includes(cleanSearch) || cleanSearch.includes(cleanText)) {
+                bestMatch = href;
+            }
+        });
+
+        if (bestMatch) console.log(`[Search] Tamilyogi match: ${bestMatch}`);
+        return bestMatch;
+    } catch (e) {
+        console.error(`[Search] Tamilyogi search error: ${e.message}`);
+        return null;
+    }
+}

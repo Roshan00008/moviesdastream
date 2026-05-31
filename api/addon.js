@@ -1,8 +1,8 @@
 import express from 'express';
 import pkg from 'stremio-addon-sdk';
 const { addonBuilder, getRouter } = pkg;
-import { resolveMultiResults, resolveMovieByTmdbId } from '../search.js';
-import { scrapeMovieStreams } from '../extractor.js';
+import { resolveMultiResults, resolveMovieByTmdbId, findTamilblastersUrl, findTamilyogiUrl } from '../search.js';
+import { scrapeMovieStreams, scrapeTamilblastersStreams, scrapeTamilyogiStreams } from '../extractor.js';
 import { fetchJson } from '../http.js';
 import dotenv from 'dotenv';
 
@@ -13,9 +13,9 @@ const TMDB_API_KEY = "1865f43a0549ca50d341dd9ab8b29f49";
 // Define addon manifest configuration
 const manifest = {
     id: "community.moviesda",
-    version: "1.0.0",
-    name: "Moviesda Tamil Movies",
-    description: "Stream Tamil and Tamil Dubbed movies directly in Stremio. Deployed Serverless on Vercel.",
+    version: "1.1.0",
+    name: "Tamil Movies Stream",
+    description: "Stream Tamil and Tamil Dubbed movies from Moviesda, Tamilblasters, and Tamilyogi. Sources aggregated in parallel.",
     resources: ["catalog", "stream"],
     types: ["movie"],
     catalogs: [
@@ -76,18 +76,17 @@ builder.defineStreamHandler(async (args) => {
     }
 
     let tmdbId = null;
-    
+
     try {
         // Step 1: Resolve TMDB ID based on incoming ID type
         if (id.startsWith('moviesda_tmdb:')) {
             tmdbId = id.split(':')[1];
             console.log(`[Addon Vercel] Processing custom catalog TMDB ID: ${tmdbId}`);
         } else if (id.startsWith('tt')) {
-            // Global Stremio catalog request using IMDb ID (tt...)
             console.log(`[Addon Vercel] Processing global IMDb ID ${id}. Querying TMDB Find API...`);
             const findUrl = `https://api.themoviedb.org/3/find/${id}?api_key=${TMDB_API_KEY}&external_source=imdb_id`;
             const findData = await fetchJson(findUrl);
-            
+
             if (findData && findData.movie_results && findData.movie_results.length > 0) {
                 tmdbId = findData.movie_results[0].id;
                 console.log(`[Addon Vercel] Successfully mapped IMDb ${id} ➔ TMDB ID ${tmdbId}`);
@@ -101,22 +100,52 @@ builder.defineStreamHandler(async (args) => {
             return { streams: [] };
         }
 
-        // Step 2: Resolve Moviesda Page URL & Metadata
-        console.log(`[Addon Vercel] Resolving Moviesda page URL for TMDB ID: ${tmdbId}`);
-        const resolved = await resolveMovieByTmdbId(tmdbId);
-        
-        if (!resolved || !resolved.url) {
-            console.warn(`[Addon Vercel] Movie not found on Moviesda index for TMDB ID ${tmdbId}`);
-            return { streams: [] };
-        }
+        // Step 2: Fetch TMDB metadata (title + year) for all site searches
+        console.log(`[Addon Vercel] Fetching TMDB metadata for ID: ${tmdbId}`);
+        const tmdbUrl = `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_API_KEY}`;
+        const tmdbData = await fetchJson(tmdbUrl);
+        const movieTitle = tmdbData?.title || tmdbData?.original_title || 'Unknown';
+        const movieYear = tmdbData?.release_date ? tmdbData.release_date.substring(0, 4) : null;
+        console.log(`[Addon Vercel] TMDB metadata: "${movieTitle}" (${movieYear})`);
 
-        const moviePageUrl = resolved.url;
-        const movieTitle = resolved.metadata.title;
-        console.log(`[Addon Vercel] Found page URL on Moviesda: ${moviePageUrl} (Title: ${movieTitle})`);
+        // Step 3: Run all 3 site URL resolvers in parallel with absolute resilience
+        console.log(`[Addon Vercel] Resolving URLs from all 3 sites in parallel...`);
+        const [resolved, tbUrl, tyUrl] = await Promise.all([
+            resolveMovieByTmdbId(tmdbId).catch(err => {
+                console.error(`[Addon Vercel] Moviesda URL resolve error (isolated):`, err.message);
+                return null;
+            }),
+            findTamilblastersUrl(movieTitle, movieYear).catch(err => {
+                console.error(`[Addon Vercel] Tamilblasters URL resolve error (isolated):`, err.message);
+                return null;
+            }),
+            findTamilyogiUrl(movieTitle, movieYear).catch(err => {
+                console.error(`[Addon Vercel] Tamilyogi URL resolve error (isolated):`, err.message);
+                return null;
+            })
+        ]);
 
-        // Step 3: Scrape Stream URLs from the page
-        const allStreams = await scrapeMovieStreams(moviePageUrl, movieTitle);
-        console.log(`[Addon Vercel] Scraped ${allStreams.length} raw streams from Moviesda`);
+        console.log(`[Addon Vercel] Moviesda URL: ${resolved?.url || 'not found'}`);
+        console.log(`[Addon Vercel] Tamilblasters URL: ${tbUrl || 'not found'}`);
+        console.log(`[Addon Vercel] Tamilyogi URL: ${tyUrl || 'not found'}`);
+
+        // Step 4: Scrape streams from all 3 sites in parallel with absolute resilience
+        const [mdStreams, tbStreams, tyStreams] = await Promise.all([
+            (resolved?.url ? scrapeMovieStreams(resolved.url, movieTitle) : Promise.resolve([])).catch(err => {
+                console.error(`[Addon Vercel] Moviesda scraping failed:`, err.message);
+                return [];
+            }),
+            (tbUrl ? scrapeTamilblastersStreams(tbUrl, movieTitle) : Promise.resolve([])).catch(err => {
+                console.error(`[Addon Vercel] Tamilblasters scraping failed:`, err.message);
+                return [];
+            }),
+            (tyUrl ? scrapeTamilyogiStreams(tyUrl, movieTitle) : Promise.resolve([])).catch(err => {
+                console.error(`[Addon Vercel] Tamilyogi scraping failed:`, err.message);
+                return [];
+            })
+        ]);
+
+        console.log(`[Addon Vercel] Scraped - Moviesda: ${mdStreams.length}, Tamilblasters: ${tbStreams.length}, Tamilyogi: ${tyStreams.length}`);
 
         // Helper to parse size string to MB for comparison
         function parseSizeToMB(sizeStr) {
@@ -129,51 +158,40 @@ builder.defineStreamHandler(async (args) => {
             return value;
         }
 
-        // Step 4: Apply filters (exclude files < 50MB)
-        const filteredStreams = allStreams.filter(stream => {
+        function getQualityRank(quality) {
+            const q = (quality || '').toLowerCase();
+            if (q.includes('1080')) return 0;
+            if (q.includes('720')) return 1;
+            if (q.includes('480')) return 2;
+            if (q.includes('360')) return 3;
+            return 4;
+        }
+
+        // Step 5: Apply 50MB minimum filter to Moviesda streams (direct files)
+        const filteredMd = mdStreams.filter(stream => {
             const sizeMB = parseSizeToMB(stream.size);
-            // If size is resolved, exclude anything less than 50 MB
-            if (stream.size !== "Unknown Size" && sizeMB < 50) {
-                console.log(`[Addon Vercel] Excluding small stream: "${stream.title}" (${stream.size})`);
+            if (stream.size !== 'Unknown Size' && sizeMB < 50) {
+                console.log(`[Addon Vercel] Excluding small Moviesda stream: "${stream.title}" (${stream.size})`);
                 return false;
             }
             return true;
         });
 
-        // Step 5: Sort streams by quality rank and size descending
-        const QUALITY_ORDER = ["1080p", "720p", "480p", "360p", "HD"];
-        
-        function getQualityRank(quality) {
-            const q = (quality || "").toLowerCase();
-            if (q.includes("1080")) return 0;
-            if (q.includes("720")) return 1;
-            if (q.includes("480")) return 2;
-            if (q.includes("360")) return 3;
-            return 4; // HD / default fallback
-        }
-
-        filteredStreams.sort((a, b) => {
-            const rankA = getQualityRank(a.quality);
-            const rankB = getQualityRank(b.quality);
-            
-            if (rankA !== rankB) {
-                return rankA - rankB; // Lower rank (better quality) comes first
-            }
-            
-            // If same quality, sort by file size descending
-            const sizeA = parseSizeToMB(a.size);
-            const sizeB = parseSizeToMB(b.size);
-            return sizeB - sizeA;
+        // Step 6: Sort Moviesda streams (direct files) by quality + size
+        filteredMd.sort((a, b) => {
+            const rankDiff = getQualityRank(a.quality) - getQualityRank(b.quality);
+            if (rankDiff !== 0) return rankDiff;
+            return parseSizeToMB(b.size) - parseSizeToMB(a.size);
         });
 
-        // Step 6: Map to Stremio Stream objects
-        const stremioStreams = filteredStreams.map((stream, index) => {
-            const isHighQuality = stream.quality === "1080p" || stream.quality === "720p";
-            const emoji = isHighQuality ? "⭐" : "⚡";
+        // Step 7: Map Moviesda streams to Stremio format (Clearly labeled: [Moviesda])
+        const mdStremio = filteredMd.map((stream, index) => {
+            const isHighQuality = stream.quality === '1080p' || stream.quality === '720p';
+            const emoji = isHighQuality ? '⭐' : '⚡';
             return {
                 url: stream.url,
-                name: `Moviesda\n${emoji} ${stream.quality}`,
-                title: `🎥 ${movieTitle}\n💾 Size: ${stream.size}\n🔗 Server #${index + 1} (${stream.quality})`,
+                name: `[Moviesda]\n${emoji} ${stream.quality}`,
+                title: `🎥 [Moviesda] · ${movieTitle}\n💾 Size: ${stream.size}\n🔗 Server #${index + 1}`,
                 behaviorHints: {
                     notWebReady: false,
                     headers: stream.headers
@@ -181,8 +199,41 @@ builder.defineStreamHandler(async (args) => {
             };
         });
 
-        console.log(`[Addon Vercel] Returning ${stremioStreams.length} sorted, playable streams to Stremio`);
-        return { streams: stremioStreams };
+        // Step 8: Map Tamilblasters streams to Stremio format (Clearly labeled: [Tamilblasters])
+        const tbStremio = tbStreams.map(stream => {
+            const isEmbed = stream.type === 'embed';
+            return {
+                url: stream.externalUrl || stream.url,
+                name: `[Tamilblasters]\n${stream.name.replace('Tamilblasters\n', '')}`,
+                title: `🎥 [Tamilblasters] · ${stream.title.replace('🔗 Tamilblasters', '').trim()}`,
+                behaviorHints: {
+                    notWebReady: isEmbed,
+                    ...(stream.headers ? { headers: stream.headers } : {})
+                }
+            };
+        });
+
+        // Step 9: Map Tamilyogi streams to Stremio format (Clearly labeled: [Tamilyogi])
+        const tyStremio = tyStreams.map(stream => {
+            const isEmbed = stream.type === 'embed';
+            return {
+                url: stream.externalUrl || stream.url,
+                name: `[Tamilyogi]\n${stream.name.replace('Tamilyogi\n', '')}`,
+                title: `🎥 [Tamilyogi] · ${stream.title.replace('🔗 Tamilyogi', '').trim()}`,
+                behaviorHints: {
+                    notWebReady: isEmbed,
+                    ...(stream.headers ? { headers: stream.headers } : {})
+                }
+            };
+        });
+
+        // Step 10: Aggregate — direct streams first (Moviesda + Tamilyogi OKRU), then embeds/downloads
+        const directTy = tyStremio.filter(s => !s.behaviorHints.notWebReady);
+        const embedTy = tyStremio.filter(s => s.behaviorHints.notWebReady);
+        const allStremio = [...mdStremio, ...directTy, ...embedTy, ...tbStremio];
+
+        console.log(`[Addon Vercel] Returning ${allStremio.length} total streams (MD:${mdStremio.length} + TB:${tbStremio.length} + TY:${tyStremio.length}) to Stremio`);
+        return { streams: allStremio };
 
     } catch (err) {
         console.error('[Addon Vercel] Stream handler error:', err);

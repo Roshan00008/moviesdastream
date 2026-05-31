@@ -305,3 +305,224 @@ export async function scrapeMovieStreams(moviePageUrl, movieTitle) {
 
     return streams;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAMILBLASTERS SCRAPER
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Scrapes a Tamilblasters post page for:
+ * 1. Embedded player iframes (hgcloud, luluvid, etc.) → externalUrl streams
+ * 2. Download buttons (data-file attr + base URL from script) → externalUrl streams
+ */
+export async function scrapeTamilblastersStreams(postUrl, movieTitle) {
+    const streams = [];
+    try {
+        console.log(`[Scraper TB] Scraping Tamilblasters page: ${postUrl}`);
+        const html = await fetchText(postUrl);
+        const $ = cheerio.load(html);
+
+        // 1. Extract download base URL from the inline <script> tag
+        let downloadBaseUrl = null;
+        $('script').each((_, el) => {
+            const content = $(el).html() || '';
+            // The script has: const downloadLink = "https://<hash>.icu/<hash>.php?file=" + button.dataset.file;
+            const match = content.match(/const downloadLink\s*=\s*["']([^"']+\?file=)["']/);
+            if (match) downloadBaseUrl = match[1];
+        });
+
+        // 2. Extract download buttons
+        $('button.downloadBtn, button[data-file]').each((i, el) => {
+            const dataFile = $(el).attr('data-file') || '';
+            const label = $(el).text().trim() || `Download ${i + 1}`;
+
+            if (dataFile) {
+                const url = downloadBaseUrl
+                    ? `${downloadBaseUrl}${encodeURIComponent(dataFile)}`
+                    : `https://www.1tamilblasters.luxe/?file=${encodeURIComponent(dataFile)}`;
+
+                // Parse quality and size from label text
+                let quality = 'HD';
+                if (/4k|2160p/i.test(label)) quality = '4K';
+                else if (/1080p/i.test(label)) quality = '1080p';
+                else if (/720p/i.test(label)) quality = '720p';
+                else if (/480p/i.test(label)) quality = '480p';
+                else if (/360p/i.test(label)) quality = '360p';
+
+                const sizeMatch = label.match(/[\d.]+\s*(?:GB|MB)/i);
+                const size = sizeMatch ? sizeMatch[0] : '';
+
+                streams.push({
+                    url,
+                    name: `Tamilblasters\n⬇️ ${quality}${size ? ' · ' + size : ''}`,
+                    title: `⬇️ Download · ${movieTitle}\n📦 ${label}\n🔗 Tamilblasters`,
+                    quality,
+                    size,
+                    type: 'download',
+                    externalUrl: url
+                });
+            }
+        });
+
+        // 3. Extract embedded player iframes
+        $('iframe').each((i, el) => {
+            const src = $(el).attr('src') || '';
+            if (!src.startsWith('http')) return;
+
+            // Try to infer player name from the domain
+            let playerName = 'Player';
+            try {
+                const host = new URL(src).hostname.replace('www.', '').split('.')[0];
+                playerName = host.charAt(0).toUpperCase() + host.slice(1);
+            } catch (e) {}
+
+            // Get the label paragraph above the iframe (e.g. "Player: 01")
+            const label = $(el).prev('p').text().trim() || `Player ${i + 1}`;
+
+            streams.push({
+                url: src,
+                name: `Tamilblasters\n🎬 ${playerName}`,
+                title: `🎬 Watch Online · ${movieTitle}\n📺 ${label} (${playerName})\n🔗 Tamilblasters`,
+                quality: 'HD',
+                size: 'Unknown Size',
+                type: 'embed',
+                externalUrl: src
+            });
+        });
+
+        console.log(`[Scraper TB] Found ${streams.length} streams (downloads + embeds)`);
+    } catch (e) {
+        console.error(`[Scraper TB] Error: ${e.message}`);
+    }
+    return streams;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAMILYOGI SCRAPER (with OKRU direct CDN resolution)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const OKRU_QUALITY_MAP = {
+    'full': '1080p',
+    'hd': '720p',
+    'sd': '480p',
+    'low': '360p',
+    'lowest': '360p',
+    'mobile': '360p'
+};
+
+/**
+ * Resolves direct MP4 CDN URLs from an OK.ru videoembed URL.
+ * Parses the data-options JSON which contains the videos array.
+ */
+async function resolveOkRuStreams(embedUrl, movieTitle) {
+    const streams = [];
+    try {
+        console.log(`[Scraper TY] Resolving OKRU embed: ${embedUrl}`);
+        const html = await fetchText(embedUrl);
+        const $ = cheerio.load(html);
+
+        let videos = null;
+        $('[data-options]').each((_, el) => {
+            if (videos) return;
+            const dataOptions = $(el).attr('data-options') || '';
+            if (!dataOptions.includes('metadata')) return;
+            try {
+                const options = JSON.parse(dataOptions);
+                if (options.flashvars?.metadata) {
+                    const metadata = JSON.parse(options.flashvars.metadata);
+                    if (metadata.videos?.length) videos = metadata.videos;
+                }
+            } catch (e) {}
+        });
+
+        if (!videos) {
+            console.warn(`[Scraper TY] OKRU: no videos found in data-options`);
+            return streams;
+        }
+
+        // Sort by quality: full > hd > sd > low
+        const qualityPriority = ['full', 'hd', 'sd', 'low', 'lowest', 'mobile'];
+        videos.sort((a, b) => qualityPriority.indexOf(a.name) - qualityPriority.indexOf(b.name));
+
+        for (const video of videos) {
+            if (video.disallowed) continue;
+            const quality = OKRU_QUALITY_MAP[video.name] || video.name;
+            const emoji = ['1080p', '720p'].includes(quality) ? '⭐' : '⚡';
+
+            streams.push({
+                url: video.url,
+                name: `Tamilyogi\n${emoji} ${quality}`,
+                title: `🎥 ${movieTitle}\n📺 Tamilyogi · OKRU · ${quality}`,
+                quality,
+                size: 'Unknown Size',
+                type: 'direct'
+            });
+        }
+
+        console.log(`[Scraper TY] OKRU resolved ${streams.length} direct CDN streams`);
+    } catch (e) {
+        console.error(`[Scraper TY] OKRU resolve error: ${e.message}`);
+    }
+    return streams;
+}
+
+/**
+ * Scrapes a Tamilyogi post page for video player URLs.
+ * Extracts OKRU embeds → resolves to direct MP4 streams.
+ * Falls back to externalUrl for other embed types.
+ */
+export async function scrapeTamilyogiStreams(postUrl, movieTitle) {
+    const streams = [];
+    try {
+        console.log(`[Scraper TY] Scraping Tamilyogi page: ${postUrl}`);
+        const html = await fetchText(postUrl);
+        const $ = cheerio.load(html);
+
+        // Collect all embed player URLs (from onclick="loadPlayer('URL', this)" buttons)
+        const playerUrls = new Set();
+
+        $('[onclick]').each((_, el) => {
+            const onclick = $(el).attr('onclick') || '';
+            const match = onclick.match(/loadPlayer\(['"]([^'"]+)['"]/);
+            if (match) playerUrls.add(match[1]);
+        });
+
+        // Also collect iframes
+        $('iframe').each((_, el) => {
+            const src = $(el).attr('src') || '';
+            if (src.startsWith('http')) playerUrls.add(src);
+        });
+
+        console.log(`[Scraper TY] Found ${playerUrls.size} player URL(s)`);
+
+        for (const playerUrl of playerUrls) {
+            if (/ok\.ru\/videoembed\//i.test(playerUrl)) {
+                // Resolve OKRU to direct CDN streams
+                const okruStreams = await resolveOkRuStreams(playerUrl, movieTitle);
+                streams.push(...okruStreams);
+            } else {
+                // Other embeds (luluvid, hgcloud, etc.) → external URL
+                let playerName = 'Player';
+                try {
+                    const host = new URL(playerUrl).hostname.replace('www.', '').split('.')[0];
+                    playerName = host.charAt(0).toUpperCase() + host.slice(1);
+                } catch (e) {}
+
+                streams.push({
+                    url: playerUrl,
+                    name: `Tamilyogi\n🎬 ${playerName}`,
+                    title: `🎬 Watch Online · ${movieTitle}\n📺 Tamilyogi · ${playerName}`,
+                    quality: 'HD',
+                    size: 'Unknown Size',
+                    type: 'embed',
+                    externalUrl: playerUrl
+                });
+            }
+        }
+
+        console.log(`[Scraper TY] Total ${streams.length} stream(s) resolved`);
+    } catch (e) {
+        console.error(`[Scraper TY] Error: ${e.message}`);
+    }
+    return streams;
+}
