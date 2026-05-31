@@ -201,13 +201,12 @@ builder.defineStreamHandler(async (args) => {
 
         // Step 8: Map Tamilblasters streams to Stremio format (Clearly labeled: [Tamilblasters])
         const tbStremio = tbStreams.map(stream => {
-            const isEmbed = stream.type === 'embed';
             return {
                 url: stream.externalUrl || stream.url,
                 name: `[Tamilblasters]\n${stream.name.replace('Tamilblasters\n', '')}`,
                 title: `🎥 [Tamilblasters] · ${stream.title.replace('🔗 Tamilblasters', '').trim()}`,
                 behaviorHints: {
-                    notWebReady: isEmbed,
+                    notWebReady: false,
                     ...(stream.headers ? { headers: stream.headers } : {})
                 }
             };
@@ -220,9 +219,7 @@ builder.defineStreamHandler(async (args) => {
                 name: `[Tamilyogi]\n${stream.name.replace('Tamilyogi\n', '')}`,
                 title: `🎥 [Tamilyogi] · ${stream.title.replace('🔗 Tamilyogi', '').trim()}`,
                 behaviorHints: {
-                    // Set to true for all Tamilyogi streams (OKRU resolved & embeds) to prevent Stremio Web Player
-                    // container_unsupported 23003 format errors, forcing fallback to external player smoothly
-                    notWebReady: true,
+                    notWebReady: false,
                     ...(stream.headers ? { headers: stream.headers } : {})
                 }
             };
