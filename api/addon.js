@@ -1,8 +1,8 @@
 import express from 'express';
 import pkg from 'stremio-addon-sdk';
 const { addonBuilder, getRouter } = pkg;
-import { resolveMultiResults, resolveMovieByTmdbId, findTamilblastersUrl, findTamilyogiUrl } from '../search.js';
-import { scrapeMovieStreams, scrapeTamilblastersStreams, scrapeTamilyogiStreams } from '../extractor.js';
+import { resolveMultiResults, resolveMovieByTmdbId, findTamilblastersUrl, findTamilyogiUrl, findProyatoMovie } from '../search.js';
+import { scrapeMovieStreams, scrapeTamilblastersStreams, scrapeTamilyogiStreams, scrapeProyatoStreams } from '../extractor.js';
 import { fetchJson } from '../http.js';
 import dotenv from 'dotenv';
 
@@ -13,9 +13,9 @@ const TMDB_API_KEY = "1865f43a0549ca50d341dd9ab8b29f49";
 // Define addon manifest configuration
 const manifest = {
     id: "community.moviesda",
-    version: "1.1.0",
+    version: "1.2.0",
     name: "Tamil Movies Stream",
-    description: "Stream Tamil and Tamil Dubbed movies from Moviesda, Tamilblasters, and Tamilyogi. Sources aggregated in parallel.",
+    description: "Stream Tamil and Tamil Dubbed movies from Moviesda, Tamilblasters, Tamilyogi, and MultiMovies (Proyato API). Sources aggregated in parallel.",
     resources: ["catalog", "stream"],
     types: ["movie"],
     catalogs: [
@@ -119,9 +119,9 @@ builder.defineStreamHandler(async (args) => {
         const movieYear = tmdbData?.release_date ? tmdbData.release_date.substring(0, 4) : null;
         console.log(`[Addon Vercel] TMDB metadata: "${movieTitle}" (${movieYear})`);
 
-        // Step 3: Run all 3 site URL resolvers in parallel with absolute resilience
-        console.log(`[Addon Vercel] Resolving URLs from all 3 sites in parallel...`);
-        const [resolved, tbUrl, tyUrl] = await Promise.all([
+        // Step 3: Run all 4 site URL resolvers in parallel with absolute resilience
+        console.log(`[Addon Vercel] Resolving URLs from all 4 sites in parallel...`);
+        const [resolved, tbUrl, tyUrl, proyatoObj] = await Promise.all([
             resolveMovieByTmdbId(tmdbId).catch(err => {
                 console.error(`[Addon Vercel] Moviesda URL resolve error (isolated):`, err.message);
                 return null;
@@ -133,15 +133,20 @@ builder.defineStreamHandler(async (args) => {
             findTamilyogiUrl(movieTitle, movieYear).catch(err => {
                 console.error(`[Addon Vercel] Tamilyogi URL resolve error (isolated):`, err.message);
                 return null;
+            }),
+            findProyatoMovie(movieTitle, movieYear).catch(err => {
+                console.error(`[Addon Vercel] Proyato URL resolve error (isolated):`, err.message);
+                return null;
             })
         ]);
 
         console.log(`[Addon Vercel] Moviesda URL: ${resolved?.url || 'not found'}`);
         console.log(`[Addon Vercel] Tamilblasters URL: ${tbUrl || 'not found'}`);
         console.log(`[Addon Vercel] Tamilyogi URL: ${tyUrl || 'not found'}`);
+        console.log(`[Addon Vercel] Proyato Slug: ${proyatoObj?.slug || 'not found'}`);
 
-        // Step 4: Scrape streams from all 3 sites in parallel with absolute resilience
-        const [mdStreams, tbStreams, tyStreams] = await Promise.all([
+        // Step 4: Scrape streams from all 4 sites in parallel with absolute resilience
+        const [mdStreams, tbStreams, tyStreams, proyatoStreams] = await Promise.all([
             (resolved?.url ? scrapeMovieStreams(resolved.url, movieTitle) : Promise.resolve([])).catch(err => {
                 console.error(`[Addon Vercel] Moviesda scraping failed:`, err.message);
                 return [];
@@ -153,10 +158,14 @@ builder.defineStreamHandler(async (args) => {
             (tyUrl ? scrapeTamilyogiStreams(tyUrl, movieTitle) : Promise.resolve([])).catch(err => {
                 console.error(`[Addon Vercel] Tamilyogi scraping failed:`, err.message);
                 return [];
+            }),
+            (proyatoObj?.slug ? scrapeProyatoStreams(proyatoObj.slug, movieTitle) : Promise.resolve([])).catch(err => {
+                console.error(`[Addon Vercel] Proyato scraping failed:`, err.message);
+                return [];
             })
         ]);
 
-        console.log(`[Addon Vercel] Scraped - Moviesda: ${mdStreams.length}, Tamilblasters: ${tbStreams.length}, Tamilyogi: ${tyStreams.length}`);
+        console.log(`[Addon Vercel] Scraped - Moviesda: ${mdStreams.length}, Tamilblasters: ${tbStreams.length}, Tamilyogi: ${tyStreams.length}, Proyato: ${proyatoStreams.length}`);
 
         // Helper to parse size string to MB for comparison
         function parseSizeToMB(sizeStr) {
@@ -238,10 +247,22 @@ builder.defineStreamHandler(async (args) => {
             };
         });
 
-        // Step 10: Aggregate — direct streams first (Moviesda), then Tamilyogi, then Tamilblasters
-        const allStremio = [...mdStremio, ...tyStremio, ...tbStremio];
+        // Step 10: Map Proyato / MultiMovies streams to Stremio format (Clearly labeled: [MultiMovies])
+        const proyatoStremio = proyatoStreams.map(stream => {
+            return {
+                url: stream.externalUrl || stream.url,
+                name: `[MultiMovies]\n🎬 HD Stream`,
+                title: `🎥 [MultiMovies] · ${movieTitle}\n📺 MultiMovies Player (Ad-Free Embed)\n🔊 Multi-Audio / Subtitles`,
+                behaviorHints: {
+                    notWebReady: false
+                }
+            };
+        });
 
-        console.log(`[Addon Vercel] Returning ${allStremio.length} total streams (MD:${mdStremio.length} + TB:${tbStremio.length} + TY:${tyStremio.length}) to Stremio`);
+        // Step 11: Aggregate — direct streams first (Moviesda), then MultiMovies, then Tamilyogi, then Tamilblasters
+        const allStremio = [...mdStremio, ...proyatoStremio, ...tyStremio, ...tbStremio];
+
+        console.log(`[Addon Vercel] Returning ${allStremio.length} total streams (MD:${mdStremio.length} + MM:${proyatoStremio.length} + TB:${tbStremio.length} + TY:${tyStremio.length}) to Stremio`);
         
         // Save to cache before returning
         if (allStremio.length > 0) {

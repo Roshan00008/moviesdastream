@@ -547,3 +547,32 @@ export async function scrapeTamilyogiStreams(postUrl, movieTitle) {
     }
     return streams;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROYATO / MULTIMOVIES API STREAM RESOLVER
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Resolves MultiMovies player stream embed link from Proyato API for a given movie slug.
+ */
+export async function scrapeProyatoStreams(slug, movieTitle) {
+    const streams = [];
+    try {
+        const playerUrl = `https://moviesapi.proyato.com/api/player/${slug}?type=movie`;
+        console.log(`[Scraper Proyato] Resolved player embed: ${playerUrl}`);
+
+        streams.push({
+            url: playerUrl,
+            name: `MultiMovies\n🎬 HD Stream`,
+            title: `🎥 [MultiMovies] · ${movieTitle}\n📺 MultiMovies Player (Ad-Free Embed)\n🔊 Multi-Audio / Subtitles`,
+            quality: 'HD',
+            size: 'Stream',
+            type: 'embed',
+            externalUrl: playerUrl
+        });
+    } catch (e) {
+        console.error(`[Scraper Proyato] Error: ${e.message}`);
+    }
+    return streams;
+}
+

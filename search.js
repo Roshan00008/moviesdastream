@@ -582,3 +582,52 @@ export async function findTamilyogiUrl(title, year) {
         return null;
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROYATO / MULTIMOVIES API SUPPORT
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PROYATO_API_BASE = "https://multimoviesapis.vercel.app";
+
+/**
+ * Searches Proyato / MultiMovies API for a movie by title and returns the best matching slug.
+ */
+export async function findProyatoMovie(title, year) {
+    try {
+        const searchUrl = `${PROYATO_API_BASE}/api/search?q=${encodeURIComponent(title)}`;
+        console.log(`[Search] Proyato search: ${searchUrl}`);
+
+        const data = await fetchJson(searchUrl);
+        const items = data?.results?.items || [];
+        if (!items.length) return null;
+
+        const cleanSearch = cleanTitle(title);
+        let bestMatch = null;
+
+        for (const item of items) {
+            const cleanItemTitle = cleanTitle(item.title || '');
+            if (cleanItemTitle.includes(cleanSearch) || cleanSearch.includes(cleanItemTitle)) {
+                if (year && item.year && String(item.year) !== String(year)) {
+                    continue;
+                }
+                bestMatch = item;
+                break;
+            }
+        }
+
+        // Fallback to first item if no strict match
+        if (!bestMatch && items.length > 0) {
+            bestMatch = items[0];
+        }
+
+        if (bestMatch?.slug) {
+            console.log(`[Search] Proyato match found: ${bestMatch.title} (slug: ${bestMatch.slug})`);
+            return { slug: bestMatch.slug, title: bestMatch.title };
+        }
+        return null;
+    } catch (e) {
+        console.error(`[Search] Proyato search error: ${e.message}`);
+        return null;
+    }
+}
+
