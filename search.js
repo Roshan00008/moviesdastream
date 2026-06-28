@@ -587,7 +587,7 @@ export async function findTamilyogiUrl(title, year) {
 // PROYATO / MULTIMOVIES API SUPPORT
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PROYATO_API_BASE = "https://multimoviesapis.vercel.app";
+const PROYATO_API_BASE = "https://moviesapi.proyato.com";
 
 /**
  * Searches Proyato / MultiMovies API for a movie by title and returns the best matching slug.
