@@ -64,6 +64,10 @@ builder.defineCatalogHandler(async (args) => {
     return { metas: [] };
 });
 
+// Simple in-memory cache to make repeated requests super fast on Vercel
+const STREAM_CACHE = new Map();
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours cache TTL
+
 /**
  * Stream Handler: Resolves movie IDs into direct playable stream links
  */
@@ -73,6 +77,13 @@ builder.defineStreamHandler(async (args) => {
 
     if (type !== 'movie') {
         return { streams: [] };
+    }
+
+    // Check in-memory cache first for instant load
+    const cached = STREAM_CACHE.get(id);
+    if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+        console.log(`[Addon Vercel] ⚡ Returning cached streams for ${id} (Instant Cache Hit!)`);
+        return { streams: cached.streams };
     }
 
     let tmdbId = null;
@@ -184,14 +195,14 @@ builder.defineStreamHandler(async (args) => {
             return parseSizeToMB(b.size) - parseSizeToMB(a.size);
         });
 
-        // Step 7: Map Moviesda streams to Stremio format (Clearly labeled: [Moviesda])
+        // Step 7: Map Moviesda streams to Stremio format (Clearly labeled: [Moviesda] + tags)
         const mdStremio = filteredMd.map((stream, index) => {
             const isHighQuality = stream.quality === '1080p' || stream.quality === '720p';
             const emoji = isHighQuality ? '⭐' : '⚡';
             return {
                 url: stream.url,
                 name: `[Moviesda]\n${emoji} ${stream.quality}`,
-                title: `🎥 [Moviesda] · ${movieTitle}\n💾 Size: ${stream.size}\n🔗 Server #${index + 1}`,
+                title: `🎥 [Moviesda] · ${movieTitle}\n🔊 Tamil Original | 📀 HDRip\n💾 Size: ${stream.size}\n🔗 Server #${index + 1}`,
                 behaviorHints: {
                     notWebReady: false,
                     headers: stream.headers
@@ -199,12 +210,14 @@ builder.defineStreamHandler(async (args) => {
             };
         });
 
-        // Step 8: Map Tamilblasters streams to Stremio format (Clearly labeled: [Tamilblasters])
+        // Step 8: Map Tamilblasters streams to Stremio format (Clearly labeled: [Tamilblasters] + tags)
         const tbStremio = tbStreams.map(stream => {
+            const audioTag = stream.audio ? `\n🔊 ${stream.audio}` : '';
+            const ripTag = stream.rip ? ` | 📀 ${stream.rip}` : '';
             return {
                 url: stream.externalUrl || stream.url,
                 name: `[Tamilblasters]\n${stream.name.replace('Tamilblasters\n', '')}`,
-                title: `🎥 [Tamilblasters] · ${stream.title.replace('🔗 Tamilblasters', '').trim()}`,
+                title: `🎥 [Tamilblasters] · ${stream.title.replace('🔗 Tamilblasters', '').trim()}${audioTag}${ripTag}`,
                 behaviorHints: {
                     notWebReady: false,
                     ...(stream.headers ? { headers: stream.headers } : {})
@@ -212,12 +225,12 @@ builder.defineStreamHandler(async (args) => {
             };
         });
 
-        // Step 9: Map Tamilyogi streams to Stremio format (Clearly labeled: [Tamilyogi])
+        // Step 9: Map Tamilyogi streams to Stremio format (Clearly labeled: [Tamilyogi] + tags)
         const tyStremio = tyStreams.map(stream => {
             return {
                 url: stream.externalUrl || stream.url,
                 name: `[Tamilyogi]\n${stream.name.replace('Tamilyogi\n', '')}`,
-                title: `🎥 [Tamilyogi] · ${stream.title.replace('🔗 Tamilyogi', '').trim()}`,
+                title: `🎥 [Tamilyogi] · ${stream.title.replace('🔗 Tamilyogi', '').trim()}\n🔊 Tamil / Multi Audio`,
                 behaviorHints: {
                     notWebReady: false,
                     ...(stream.headers ? { headers: stream.headers } : {})
@@ -229,6 +242,15 @@ builder.defineStreamHandler(async (args) => {
         const allStremio = [...mdStremio, ...tyStremio, ...tbStremio];
 
         console.log(`[Addon Vercel] Returning ${allStremio.length} total streams (MD:${mdStremio.length} + TB:${tbStremio.length} + TY:${tyStremio.length}) to Stremio`);
+        
+        // Save to cache before returning
+        if (allStremio.length > 0) {
+            STREAM_CACHE.set(id, {
+                timestamp: Date.now(),
+                streams: allStremio
+            });
+        }
+
         return { streams: allStremio };
 
     } catch (err) {
