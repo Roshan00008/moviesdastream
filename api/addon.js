@@ -204,8 +204,19 @@ builder.defineStreamHandler(async (args) => {
             return parseSizeToMB(b.size) - parseSizeToMB(a.size);
         });
 
+        // Keep at most 2 mirrors per quality to avoid exceeding Stremio's UI list limit
+        const qualityCounts = {};
+        const limitedMd = [];
+        for (const stream of filteredMd) {
+            const q = stream.quality || 'HD';
+            qualityCounts[q] = (qualityCounts[q] || 0) + 1;
+            if (qualityCounts[q] <= 2) {
+                limitedMd.push(stream);
+            }
+        }
+
         // Step 7: Map Moviesda streams to Stremio format (Clearly labeled: [Moviesda] + tags)
-        const mdStremio = filteredMd.map((stream, index) => {
+        const mdStremio = limitedMd.map((stream, index) => {
             const isHighQuality = stream.quality === '1080p' || stream.quality === '720p';
             const emoji = isHighQuality ? '⭐' : '⚡';
             return {
@@ -259,10 +270,10 @@ builder.defineStreamHandler(async (args) => {
             };
         });
 
-        // Step 11: Aggregate — direct streams first (Moviesda), then MultiMovies, then Tamilyogi, then Tamilblasters
-        const allStremio = [...mdStremio, ...proyatoStremio, ...tyStremio, ...tbStremio];
+        // Step 11: Aggregate — premium embeds and direct links first, followed by Moviesda, followed by Tamilblasters
+        const allStremio = [...proyatoStremio, ...tyStremio, ...mdStremio, ...tbStremio];
 
-        console.log(`[Addon Vercel] Returning ${allStremio.length} total streams (MD:${mdStremio.length} + MM:${proyatoStremio.length} + TB:${tbStremio.length} + TY:${tyStremio.length}) to Stremio`);
+        console.log(`[Addon Vercel] Returning ${allStremio.length} total streams (MM:${proyatoStremio.length} + TY:${tyStremio.length} + MD:${mdStremio.length} + TB:${tbStremio.length}) to Stremio`);
         
         // Save to cache before returning
         if (allStremio.length > 0) {

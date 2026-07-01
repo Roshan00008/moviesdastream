@@ -518,8 +518,15 @@ export async function findTamilblastersUrl(title, year) {
             const href = $(el).attr('href') || '';
             const text = $(el).text().trim();
 
-            // Must be a link within the same domain (a post page)
-            if (!href.startsWith(domain) || href === domain || href === `${domain}/`) return;
+            // Must be a link within a Tamilblasters domain
+            const isTbLink = TB_DOMAIN_PATTERN.test(href);
+            if (!isTbLink) return;
+
+            // Exclude homepage links
+            const cleanHref = href.replace(/\/$/, '');
+            const parsedHome = cleanHref.match(TB_DOMAIN_PATTERN);
+            if (parsedHome && cleanHref === parsedHome[0]) return;
+
             if (href.includes('/category/') || href.includes('/tag/') || href.includes('/page/') || href.includes('wp-')) return;
             if (text.length < 5) return;
 
@@ -560,12 +567,22 @@ export async function findTamilyogiUrl(title, year) {
 
         let bestMatch = null;
 
+        const TAMILYOGI_DOMAIN_PATTERN = /https?:\/\/(?:www\.)?tamilyogi\.[a-z.]+/i;
+
         $('a').each((_, el) => {
             if (bestMatch) return;
             const href = $(el).attr('href') || '';
             const text = $(el).text().trim();
 
-            if (!href.startsWith(TAMILYOGI_BASE) || href === TAMILYOGI_BASE || href === `${TAMILYOGI_BASE}/`) return;
+            // Must be a link within a Tamilyogi domain
+            const isTyLink = TAMILYOGI_DOMAIN_PATTERN.test(href);
+            if (!isTyLink) return;
+
+            // Exclude homepage links
+            const cleanHref = href.replace(/\/$/, '');
+            const parsedHome = cleanHref.match(TAMILYOGI_DOMAIN_PATTERN);
+            if (parsedHome && cleanHref === parsedHome[0]) return;
+
             if (href.includes('/category/') || href.includes('/tag/') || href.includes('/page/') || href.includes('wp-')) return;
             if (text.length < 5) return;
 
