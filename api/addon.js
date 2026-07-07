@@ -204,16 +204,8 @@ builder.defineStreamHandler(async (args) => {
             return parseSizeToMB(b.size) - parseSizeToMB(a.size);
         });
 
-        // Keep at most 2 mirrors per quality to avoid exceeding Stremio's UI list limit
-        const qualityCounts = {};
-        const limitedMd = [];
-        for (const stream of filteredMd) {
-            const q = stream.quality || 'HD';
-            qualityCounts[q] = (qualityCounts[q] || 0) + 1;
-            if (qualityCounts[q] <= 2) {
-                limitedMd.push(stream);
-            }
-        }
+        // Keep only the top 3 best overall streams from Moviesda to avoid flooding Stremio's UI list
+        const limitedMd = filteredMd.slice(0, 3);
 
         // Step 7: Map Moviesda streams to Stremio format (Clearly labeled: [Moviesda] + tags)
         const mdStremio = limitedMd.map((stream, index) => {
