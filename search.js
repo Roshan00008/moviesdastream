@@ -504,10 +504,22 @@ export async function findTamilblastersUrl(title, year) {
     try {
         const domain = await getTamilblastersDomain();
         const query = year ? `${title} ${year}` : title;
-        const searchUrl = `${domain}/?s=${encodeURIComponent(query)}`;
-        console.log(`[Search] Tamilblasters search: ${searchUrl}`);
+        const searchUrl = `${domain}/index.php?/search/&do=quicksearch`;
+        console.log(`[Search] Tamilblasters search POST: ${searchUrl} with query: "${query}"`);
 
-        const html = await fetchText(searchUrl);
+        const body = new URLSearchParams();
+        body.append('q', query);
+        body.append('search_in', 'titles');
+        body.append('type', 'all');
+        body.append('search_and_or', 'and');
+
+        const html = await fetchText(searchUrl, {
+            method: 'POST',
+            body: body,
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+        });
         const $ = cheerio.load(html);
         const cleanSearch = cleanTitle(title);
 
@@ -518,23 +530,15 @@ export async function findTamilblastersUrl(title, year) {
             const href = $(el).attr('href') || '';
             const text = $(el).text().trim();
 
-            // Must be a link within a Tamilblasters domain
-            const isTbLink = TB_DOMAIN_PATTERN.test(href);
-            if (!isTbLink) return;
-
-            // Exclude homepage links
-            const cleanHref = href.replace(/\/$/, '');
-            const parsedHome = cleanHref.match(TB_DOMAIN_PATTERN);
-            if (parsedHome && cleanHref === parsedHome[0]) return;
-
-            if (href.includes('/category/') || href.includes('/tag/') || href.includes('/page/') || href.includes('wp-')) return;
+            // Must be a forum topic page
+            if (!href.includes('/forums/topic/')) return;
             if (text.length < 5) return;
 
             const cleanText = cleanTitle(text.split('(')[0]);
             if (cleanText.includes(cleanSearch) || cleanSearch.includes(cleanText)) {
                 // If year provided, prefer the result that contains the year
                 if (year && !href.includes(year) && !text.includes(year)) return;
-                bestMatch = href;
+                bestMatch = href.split('&')[0];
             }
         });
 
