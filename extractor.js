@@ -411,7 +411,63 @@ export async function scrapeTamilblastersStreams(postUrl, movieTitle) {
             });
         });
 
-        console.log(`[Scraper TB] Found ${streams.length} streams (downloads + embeds)`);
+        // 4. Extract external download links from anchor tags inside post content
+        $('.cPost_contentWrap a, article a').each((i, el) => {
+            const href = $(el).attr('href') || '';
+            const label = $(el).text().trim();
+            if (!href.startsWith('http')) return;
+            
+            // Exclude forum internal links, telegram, etc.
+            if (href.includes('tamilblasters') || href.includes('ips-community') || href.includes('t.me') || href.includes('telegram.me') || href.includes('invisioncommunity') || href.includes('ipbmafia')) return;
+            if (label.length < 3) return;
+
+            // Check if label contains quality patterns
+            let quality = 'HD';
+            if (/4k|2160p/i.test(label)) quality = '4K';
+            else if (/1080p/i.test(label)) quality = '1080p';
+            else if (/720p/i.test(label)) quality = '720p';
+            else if (/480p/i.test(label)) quality = '480p';
+            else if (/360p/i.test(label)) quality = '360p';
+
+            // Extract languages (e.g. Tam, Tel, Hin, Eng)
+            const audioLangs = [];
+            if (/tam/i.test(label)) audioLangs.push('Tamil');
+            if (/tel/i.test(label)) audioLangs.push('Telugu');
+            if (/hin/i.test(label)) audioLangs.push('Hindi');
+            if (/eng/i.test(label)) audioLangs.push('English');
+            if (/kan/i.test(label)) audioLangs.push('Kannada');
+            if (/mal/i.test(label)) audioLangs.push('Malayalam');
+            const audioStr = audioLangs.length ? audioLangs.join(' + ') : 'Multi Audio';
+
+            // Extract Rip Type
+            let ripType = 'WEB-DL';
+            if (/bluray/i.test(label)) ripType = 'BluRay';
+            else if (/brrip|br_rip/i.test(label)) ripType = 'BRRip';
+            else if (/webrip|web-rip/i.test(label)) ripType = 'WEBRip';
+            else if (/hdrip/i.test(label)) ripType = 'HDRip';
+            else if (/dvd/i.test(label)) ripType = 'DVD';
+            else if (/predvd|pre-dvd|cam/i.test(label)) ripType = 'PreDVD/CAM';
+
+            const sizeMatch = label.match(/[\d.]+\s*(?:GB|MB)/i);
+            const size = sizeMatch ? sizeMatch[0] : 'Unknown Size';
+
+            // Only add if not duplicate URL
+            if (!streams.some(s => s.url === href)) {
+                streams.push({
+                    url: href,
+                    name: `Tamilblasters\n🎬 ${quality}`,
+                    title: `🎬 Watch/Download · ${movieTitle}\n🔊 ${audioStr} | 📀 ${ripType}\n📦 ${label}\n🔗 Tamilblasters (External)`,
+                    quality,
+                    size,
+                    audio: audioStr,
+                    rip: ripType,
+                    type: 'embed',
+                    externalUrl: href
+                });
+            }
+        });
+
+        console.log(`[Scraper TB] Found ${streams.length} streams (downloads + embeds + links)`);
     } catch (e) {
         console.error(`[Scraper TB] Error: ${e.message}`);
     }
