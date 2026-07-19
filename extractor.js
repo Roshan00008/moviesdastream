@@ -68,7 +68,14 @@ async function getDirectMp4Url(downloadPageUrl) {
             const href = $(el).attr('href');
             const label = $(el).text().trim();
             
-            if (href && (href.includes('.mp4') || href.includes('cdnserver'))) {
+            if (href && (
+                href.includes('.mp4') || 
+                href.includes('cdnserver') || 
+                href.includes('download.php') || 
+                href.includes('fastbytes') || 
+                href.includes('onestream.today') || 
+                href.includes('uptodl.ch')
+            )) {
                 directUrls.push({
                     url: href,
                     title: label || "Download Server Direct"
