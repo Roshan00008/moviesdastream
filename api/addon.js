@@ -13,7 +13,7 @@ const TMDB_API_KEY = "1865f43a0549ca50d341dd9ab8b29f49";
 // Define addon manifest configuration
 const manifest = {
     id: "community.moviesda",
-    version: "1.2.0",
+    version: "1.2.1",
     name: "Tamil Movies Stream",
     description: "Stream Tamil and Tamil Dubbed movies from Moviesda, Tamilblasters, Tamilyogi, and MultiMovies (Proyato API). Sources aggregated in parallel.",
     resources: ["catalog", "stream"],
@@ -66,7 +66,7 @@ builder.defineCatalogHandler(async (args) => {
 
 // Simple in-memory cache to make repeated requests super fast on Vercel
 const STREAM_CACHE = new Map();
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours cache TTL
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache TTL
 
 /**
  * Stream Handler: Resolves movie IDs into direct playable stream links
@@ -79,10 +79,11 @@ builder.defineStreamHandler(async (args) => {
         return { streams: [] };
     }
 
+    const cacheKey = `${manifest.version}:${id}`;
     // Check in-memory cache first for instant load
-    const cached = STREAM_CACHE.get(id);
+    const cached = STREAM_CACHE.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
-        console.log(`[Addon Vercel] ⚡ Returning cached streams for ${id} (Instant Cache Hit!)`);
+        console.log(`[Addon Vercel] ⚡ Returning cached streams for ${cacheKey} (Instant Cache Hit!)`);
         return { streams: cached.streams };
     }
 
@@ -275,7 +276,7 @@ builder.defineStreamHandler(async (args) => {
         
         // Save to cache before returning
         if (allStremio.length > 0) {
-            STREAM_CACHE.set(id, {
+            STREAM_CACHE.set(cacheKey, {
                 timestamp: Date.now(),
                 streams: allStremio
             });
