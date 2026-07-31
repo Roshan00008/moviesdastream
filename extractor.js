@@ -1,7 +1,7 @@
 import * as cheerio from 'cheerio';
 import { fetchText, fetchHead, HEADERS } from './http.js';
 
-const BASE_URL = "https://moviesda30.com";
+const BASE_URL = "https://moviesda34.com";
 
 /**
  * Safely fetches the file size of a direct URL by querying its headers in a timed-out request
@@ -54,6 +54,30 @@ function resolveUrl(url) {
     return `${BASE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
 }
 
+async function resolveDirectVideoUrl(url) {
+    if (!url) return url;
+    if (url.includes('download.fastbytes.xyz') || url.includes('download.php') || url.includes('uptodl.ch')) {
+        try {
+            const res = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    ...HEADERS,
+                    "Referer": "https://movies.downloadpage.xyz/"
+                },
+                redirect: 'manual'
+            });
+            const location = res.headers.get('location');
+            if (location && location.startsWith('http')) {
+                console.log(`[Scraper] Resolved 302 redirect to direct video URL: ${location.substring(0, 80)}...`);
+                return location;
+            }
+        } catch (e) {
+            console.warn(`[Scraper] Failed to resolve 302 redirect for ${url}: ${e.message}`);
+        }
+    }
+    return url;
+}
+
 /**
  * Stage 6: Retrieve the direct playable .mp4 URL from movies.downloadpage.xyz page
  */
@@ -63,8 +87,9 @@ async function getDirectMp4Url(downloadPageUrl) {
         const $ = cheerio.load(html);
         
         const directUrls = [];
+        const links = $('a').get();
         
-        $('a').each((_, el) => {
+        for (const el of links) {
             const href = $(el).attr('href');
             const label = $(el).text().trim();
             
@@ -76,12 +101,13 @@ async function getDirectMp4Url(downloadPageUrl) {
                 href.includes('onestream.today') || 
                 href.includes('uptodl.ch')
             )) {
+                const finalUrl = await resolveDirectVideoUrl(href);
                 directUrls.push({
-                    url: href,
+                    url: finalUrl,
                     title: label || "Download Server Direct"
                 });
             }
-        });
+        }
         
         return directUrls;
     } catch (e) {

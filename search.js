@@ -2,7 +2,7 @@ import * as cheerio from 'cheerio';
 import { fetchText, fetchJson } from './http.js';
 
 const TMDB_API_KEY = "1865f43a0549ca50d341dd9ab8b29f49";
-const BASE_URL = "https://moviesda30.com";
+const BASE_URL = "https://moviesda34.com";
 
 const SUPPORTED_CATEGORY_YEARS = ["2026", "2025", "2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016", "2015", "2012"];
 
@@ -448,7 +448,7 @@ export async function scrapeLatestUpdates() {
 let _tbDomainCache = null;
 
 const TB_DOMAIN_PATTERN = /https?:\/\/(?:www\.)?1tamilblasters\.[a-z.]+/i;
-const TB_FALLBACK_DOMAIN = "https://www.1tamilblasters.luxe";
+const TB_FALLBACK_DOMAIN = "https://www.1tamilblasters.tattoo";
 
 /**
  * Auto-discovers the current live Tamilblasters domain via search engines.

@@ -222,12 +222,14 @@ builder.defineStreamHandler(async (args) => {
             };
         });
 
-        // Step 8: Map Tamilblasters streams to Stremio format (Clearly labeled: [Tamilblasters] + tags)
+        // Step 8: Map Tamilblasters streams to Stremio format
         const tbStremio = tbStreams.map(stream => {
             const audioTag = stream.audio ? `\n🔊 ${stream.audio}` : '';
             const ripTag = stream.rip ? ` | 📀 ${stream.rip}` : '';
+            const targetUrl = stream.url || stream.externalUrl;
+            const isDirectVideo = targetUrl && (targetUrl.includes('.mp4') || targetUrl.includes('.m3u8'));
             return {
-                url: stream.externalUrl || stream.url,
+                ...(isDirectVideo ? { url: targetUrl } : { externalUrl: targetUrl }),
                 name: `[Tamilblasters]\n${stream.name.replace('Tamilblasters\n', '')}`,
                 title: `🎥 [Tamilblasters] · ${stream.title.replace('🔗 Tamilblasters', '').trim()}${audioTag}${ripTag}`,
                 behaviorHints: {
@@ -237,10 +239,12 @@ builder.defineStreamHandler(async (args) => {
             };
         });
 
-        // Step 9: Map Tamilyogi streams to Stremio format (Clearly labeled: [Tamilyogi] + tags)
+        // Step 9: Map Tamilyogi streams to Stremio format
         const tyStremio = tyStreams.map(stream => {
+            const targetUrl = stream.url || stream.externalUrl;
+            const isDirectVideo = targetUrl && (targetUrl.includes('.mp4') || targetUrl.includes('.m3u8') || stream.type === 'direct');
             return {
-                url: stream.externalUrl || stream.url,
+                ...(isDirectVideo ? { url: targetUrl } : { externalUrl: targetUrl }),
                 name: `[Tamilyogi]\n${stream.name.replace('Tamilyogi\n', '')}`,
                 title: `🎥 [Tamilyogi] · ${stream.title.replace('🔗 Tamilyogi', '').trim()}\n🔊 Tamil / Multi Audio`,
                 behaviorHints: {
@@ -250,10 +254,12 @@ builder.defineStreamHandler(async (args) => {
             };
         });
 
-        // Step 10: Map Proyato / MultiMovies streams to Stremio format (Clearly labeled: [MultiMovies])
+        // Step 10: Map Proyato / MultiMovies streams to Stremio format
         const proyatoStremio = proyatoStreams.map(stream => {
+            const targetUrl = stream.externalUrl || stream.url;
+            const isDirectVideo = targetUrl && (targetUrl.includes('.mp4') || targetUrl.includes('.m3u8'));
             return {
-                url: stream.externalUrl || stream.url,
+                ...(isDirectVideo ? { url: targetUrl } : { externalUrl: targetUrl }),
                 name: `[MultiMovies]\n🎬 HD Stream`,
                 title: `🎥 [MultiMovies] · ${movieTitle}\n📺 MultiMovies Player (Ad-Free Embed)\n🔊 Multi-Audio / Subtitles`,
                 behaviorHints: {
