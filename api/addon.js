@@ -295,8 +295,12 @@ const app = express();
 const addonInterface = builder.getInterface();
 const router = getRouter(addonInterface);
 
-// Path normalizer: strips "/api/addon" prefix so that Stremio SDK router can match the endpoints perfectly
+// Path normalizer & cache control middleware
 app.use((req, res, next) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
     console.log(`[Addon Vercel] Pre-normalized URL: ${req.url}`);
     if (req.url.startsWith('/api/addon')) {
         req.url = req.url.substring('/api/addon'.length);
