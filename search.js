@@ -155,7 +155,8 @@ async function findMovieByAZIndex(title, year) {
  * Searches "title year site:moviesda30.com" via Google's public HTML interface
  */
 async function searchMovieGoogle(title, year) {
-    const query = `"${title}" ${year || ''} site:moviesda30.com`.trim();
+    const domainHost = BASE_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const query = `"${title}" ${year || ''} site:${domainHost}`.trim();
     // Use multiple search engines for resilience
     const engines = [
         `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
@@ -172,7 +173,7 @@ async function searchMovieGoogle(title, year) {
             
             let matchedHref = null;
 
-            // Parse all links looking for moviesda30.com movie slugs
+            // Parse all links looking for moviesda movie slugs
             $('a').each((_, el) => {
                 if (matchedHref) return;
                 const rawHref = $(el).attr('href') || '';
@@ -189,11 +190,11 @@ async function searchMovieGoogle(title, year) {
                     destUrl = decodeURIComponent(gMatch[1]);
                 }
 
-                if (!destUrl.includes('moviesda30.com')) return;
+                if (!destUrl.toLowerCase().includes('moviesda')) return;
                 
                 // Extract slug
                 try {
-                    const urlObj = new URL(destUrl.startsWith('http') ? destUrl : `https://moviesda30.com${destUrl}`);
+                    const urlObj = new URL(destUrl.startsWith('http') ? destUrl : `${BASE_URL}${destUrl}`);
                     const slug = urlObj.pathname.split('/').filter(Boolean)[0];
                     if (!slug) return;
 

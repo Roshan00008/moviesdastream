@@ -86,10 +86,8 @@ async function getDirectMp4Url(downloadPageUrl) {
         const html = await fetchText(resolveUrl(downloadPageUrl));
         const $ = cheerio.load(html);
         
-        const directUrls = [];
-        const links = $('a').get();
-        
-        for (const el of links) {
+        const candidates = [];
+        $('a').each((_, el) => {
             const href = $(el).attr('href');
             const label = $(el).text().trim();
             
@@ -101,13 +99,20 @@ async function getDirectMp4Url(downloadPageUrl) {
                 href.includes('onestream.today') || 
                 href.includes('uptodl.ch')
             )) {
-                const finalUrl = await resolveDirectVideoUrl(href);
-                directUrls.push({
-                    url: finalUrl,
-                    title: label || "Download Server Direct"
-                });
+                candidates.push({ href, label });
             }
-        }
+        });
+        
+        // Take top 2 server links to ensure fast parallel execution on Vercel
+        const selected = candidates.slice(0, 2);
+        
+        const directUrls = await Promise.all(selected.map(async (item) => {
+            const finalUrl = await resolveDirectVideoUrl(item.href);
+            return {
+                url: finalUrl,
+                title: item.label || "Download Server Direct"
+            };
+        }));
         
         return directUrls;
     } catch (e) {
