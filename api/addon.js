@@ -13,7 +13,7 @@ const TMDB_API_KEY = "1865f43a0549ca50d341dd9ab8b29f49";
 // Define addon manifest configuration
 const manifest = {
     id: "community.moviesda",
-    version: "1.2.1",
+    version: "1.2.2",
     name: "Tamil Movies Stream",
     description: "Stream Tamil and Tamil Dubbed movies from Moviesda, Tamilblasters, Tamilyogi, and MultiMovies (Proyato API). Sources aggregated in parallel.",
     resources: ["catalog", "stream"],
